@@ -1,18 +1,26 @@
+from asyncio.windows_events import NULL
 import pygame
 import random
 import math
 import heapq
 import pdb
+import generator
 from collections import deque
 pygame.init()
 pygame.font.init()
 font = pygame.font.Font(None, 36) 
-WIDTH, HEIGHT = 600, 600
+WIDTH, HEIGHT = 1000, 600
 CELL_SIZE = 30
 PACMAN_SPEED = 80
-GHOST_SPEED = 1000
+GHOST_SPEED = 1500
 LIVES = 3
 
+def create_map():
+    rows, cols = 19, 31
+    maze = generator.generate_maze_with_cycles(rows, cols, cycle_probability=0.3, max_cycles=40)
+    pacman_pos, ghost_positions = generator.place_pacman_and_ghosts(maze)
+    generator.write_maze_to_file(maze, pacman_pos, ghost_positions, filename="maps2.txt")
+create_map()
 def load_maps(filename):
     maps = []
     pacman_positions = []
@@ -137,7 +145,7 @@ def bfs(maze, start, goal):
     path.reverse()
     return path
 
-def dfs(maze, start, goal):
+def dfs(maze, start, goal, visited_cell):
     stack = [start]
     visited = [[False for _ in range(COLS)] for _ in range(ROWS)]
     came_from = {}
@@ -153,7 +161,7 @@ def dfs(maze, start, goal):
                 if (0 <= next_pos[0] < COLS and 
                     0 <= next_pos[1] < ROWS and 
                     maze[next_pos[1]][next_pos[0]] == 0 and 
-                    not visited[next_pos[1]][next_pos[0]]):
+                    not visited[next_pos[1]][next_pos[0]] and next_pos!=visited_cell):
                     stack.append(next_pos)
                     came_from[next_pos] = current
     current = goal
@@ -162,6 +170,7 @@ def dfs(maze, start, goal):
         path.append(current)
         current = came_from[current]
     path.reverse()
+    print(path)
     return path
 last_pacman_move_time = 0
 def move_pacman(keys):
@@ -182,22 +191,24 @@ def move_pacman(keys):
             last_pacman_move_time = current_time
 
 last_ghost_move_time = 0
+visited_cell_dfs = NULL
 def move_ghosts():
-    global last_ghost_move_time
+    global last_ghost_move_time, visited_cell_dfs
     current_time = pygame.time.get_ticks()
     if current_time - last_ghost_move_time >= GHOST_SPEED:
         next_positions = [] 
         path_a_star = astar(maze, (ghost_pos[0][0], ghost_pos[0][1]), (pacman_pos[0], pacman_pos[1]))
         if path_a_star:
-            next_positions.append(path_a_star[0]) 
+            next_positions.append(path_a_star[0])
         path_bfs = bfs(maze, (ghost_pos[1][0], ghost_pos[1][1]), (pacman_pos[0], pacman_pos[1]))
         if path_bfs:
             next_positions.append(path_bfs[0])
-        path_dfs = dfs(maze, (ghost_pos[2][0], ghost_pos[2][1]), (pacman_pos[0], pacman_pos[1]))
+        path_dfs = dfs(maze, (ghost_pos[2][0], ghost_pos[2][1]), (pacman_pos[0], pacman_pos[1]), visited_cell_dfs)
         if path_dfs:
-            if heuristic(list(ghost_pos[2]), list(pacman_pos)) < 10:
-                path_dfs = bfs(maze, (ghost_pos[2][0], ghost_pos[2][1]), (pacman_pos[0], pacman_pos[1]))
+            #if heuristic(list(ghost_pos[2]), list(pacman_pos)) < 10:
+            #    path_dfs = bfs(maze, (ghost_pos[2][0], ghost_pos[2][1]), (pacman_pos[0], pacman_pos[1]))
             next_positions.append(path_dfs[0])
+            visited_cell_dfs = ghost_pos[2]
         occupied_positions = set()
         for i, next_pos in enumerate(next_positions):
             if tuple(next_pos) not in occupied_positions:
@@ -228,7 +239,7 @@ def next_level():
         ghost_pos = ghost_positions[current_level]
         ROWS, COLS = len(maze), len(maze[0])
         food = [[1 if maze[row][col] == 0 else 0 for col in range(COLS)] for row in range(ROWS)]
-        GHOST_SPEED = 900
+        GHOST_SPEED = GHOST_SPEED - 100
         pacman_pos_1 = pacman_pos.copy()
         ghost_pos_1 = [list(pos) for pos in ghost_pos]
         #print(ghost_pos)
